@@ -10,8 +10,7 @@ class BitcoinInsight_Api extends TooBasic_Controller
 	protected function _construct()
 	{
 		header('Content-Type: application/javascript');
-		require('config.php');
-		$this->_bt = new JsonRpcClient($bitcoinRpc);
+		$this->_bt = new JsonRpcClient($GLOBALS['bitcoinRpc']);
 	}
 
 	public function getVersion()
@@ -45,7 +44,7 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		print json_encode([
 			'status' => 200,
 			'data' => [
-				'blockchain.info' => $response,
+				'bitstamp' => $response,
 			]
 		]);
 	}
@@ -66,8 +65,10 @@ class BitcoinInsight_Api extends TooBasic_Controller
 
 	public function getBlocks()
 	{
-		$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 200;
-#		$date = $_GET['blockDate'];
+		$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
+		$date = isset($_GET['blockDate']) ? $_GET['blockDate'] : date('Y-m-d');
+#		$start = isset($_GET['startTimestamp']) ? null: null;
+
 		$hash = $this->_bt->getbestblockhash();
 
 		$blocks = [];
@@ -83,18 +84,27 @@ class BitcoinInsight_Api extends TooBasic_Controller
 
 		print json_encode([
 			'blocks' => $blocks,
-			'length' => $limit,
+			'length' => count($blocks),
 			'pagination' => [
-				'next' => '2015-12-10', 'prev' => '2015-12-08', 'currentTs' => 1449705599, 'current' => '2015-12-09', 'isToday' => true, 'more'=>true, 'moreTs'=> 1449705599,
+				'next' => date('Y-m-d', strtotime($date .' + 1 day')),
+				'prev' => date('Y-m-d', strtotime($date .' - 1 day')),
+				'currentTs' => time(),
+				'current' => date('Y-m-d'),
+				'isToday' => ($date == date('Y-m-d')),
+				'more'=> true,
+				'moreTs'=> 1449705599,
 			],
 		]);
 	}
 
 	public function getStatus()
 	{
-		switch ($_GET['q'])
+		$q = isset($_GET['q']) ? $_GET['q'] : null;
+
+		switch ($q)
 		{
 			default:
+			case 'getInfo':
 				$i = $this->_bt->getinfo();
 
 				print json_encode([
@@ -113,8 +123,13 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		}
 	}
 
-	public function getBlock($hash)
+	public function getBlock($id)
 	{
+		if (strlen($id) < 16)
+			$hash = $this->_bt->getblockhash(intval($id));
+		else
+			$hash = $id;
+
 		$b = $this->_bt->getblock($hash);
 
 		if ($b->height <  210000)
@@ -137,11 +152,8 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		$b = $this->_bt->getblock($_GET['block']);
 		$limit = 25;
 
-#		$_GET['block'];
-#		$_GET['pageNum'];
-
 		$txs = [];
-		foreach (array_slice($b->tx, 0, $limit) as $txHash)
+		foreach (array_slice($b->tx, ($_GET['pageNum']*$limit), $limit) as $txHash)
 			array_push($txs, $this->_getTx($txHash));
 
 		print json_encode([
@@ -150,11 +162,17 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		]);
 	}
 
+	public function getAddr($addr)
+	{
+#		$_GET['noTxList']
+	}
+
 	public function getTx($txHash)
 	{
 		print json_encode($this->_getTx($txHash));
 	}
 
+	// Transaction-size source: https://en.bitcoin.it/wiki/Transaction
 	protected function _getTx($hash)
 	{
 		$tx = $this->_bt->getrawtransaction($hash, 1);
@@ -199,13 +217,12 @@ class BitcoinInsight_Api extends TooBasic_Controller
 	// 'index' is the default action
 	public function getIndex()
 	{
-		// Until we have some sort of documentation
-		header('Location: /');
+		print 'here could be some documentation';
 	}
 
-	public function get($action)
+	public function get($action, ...$params)
 	{
-		throw new Exception('Sorry we have never heard of this "'. $action .'" you speak of');
+		throw new Exception('Sorry we have never heard of this "'. htmlspecialchars($action) .'" you speak of');
 	}
 
 	// This action gets called when an error occurs; eg the action is unknown
@@ -214,8 +231,13 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		if (!headers_sent())
 			http_response_code(500);
 
-		print json_encode(['error' => $e]);
+		print json_encode(['error' => $e->getMessage()]);
 	}
 }
 
-BitcoinInsight_Api::dispatch(substr($_SERVER['REQUEST_URI'], strlen('/api')));
+require('config.php');
+
+if (isset($apiBase))
+	$_SERVER['REQUEST_URI'] = substr($_SERVER['REQUEST_URI'], strlen($apiBase));
+
+BitcoinInsight_Api::dispatch($_SERVER['REQUEST_URI']);

@@ -31,11 +31,7 @@ class JsonRpcClient
 		curl_setopt($c, CURLOPT_POSTFIELDS, $request);
 
 		$response = curl_exec($c);
-
-		if (200 != curl_getinfo($c, CURLINFO_HTTP_CODE))
-			throw new Exception('Unable to connect; '. curl_error($c));
-		else
-			$response = json_decode($response);
+		$response = json_decode($response);
 
 		curl_close($c);
 
@@ -46,7 +42,7 @@ class JsonRpcClient
 			throw new Exception('Unexpected responseId '. $response->id .', expected '. $requestId);
 
 		if (!is_null($response->error))
-			throw new Exception('Request error: '. $response->error);
+			throw new Exception('Request error: '. $response->error->message);
 
 		return $response->result;
 	}
