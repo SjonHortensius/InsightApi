@@ -1,0 +1,3 @@
+[submodule "TooBasic"]
+	path = TooBasic
+	url = https://github.com/SjonHortensius/TooBasic.git
