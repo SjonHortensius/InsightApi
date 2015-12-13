@@ -6,11 +6,16 @@ require('JsonRpcClient.php');
 class BitcoinInsight_Api extends TooBasic_Controller
 {
 	protected $_bt;
+	protected $_mc;
 
 	protected function _construct()
 	{
 		header('Content-Type: application/javascript');
+
 		$this->_bt = new JsonRpcClient($GLOBALS['bitcoinRpc']);
+		$this->_mc = new Memcached('localhost');
+		if (empty($this->_mc->getServerList()))
+			$this->_mc->addServer('127.0.0.1', 11211);
 	}
 
 	public function getVersion()
@@ -65,7 +70,7 @@ class BitcoinInsight_Api extends TooBasic_Controller
 
 	public function getBlocks()
 	{
-		$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
+		$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 50;
 		$date = isset($_GET['blockDate']) ? $_GET['blockDate'] : date('Y-m-d');
 #		$start = isset($_GET['startTimestamp']) ? null: null;
 
@@ -74,7 +79,7 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		$blocks = [];
 		for ($i=0; $i < $limit; $i++)
 		{
-			$block = $this->_bt->getblock($hash);
+			$block = $this->_getBlock($hash);
 			$block->txlength = count($block->tx); unset($block->tx);
 			$block->poolinfo = [];
 
@@ -130,7 +135,7 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		else
 			$hash = $id;
 
-		$b = $this->_bt->getblock($hash);
+		$b = $this->_getBlock($hash);
 
 		if ($b->height <  210000)
 			$b->reward = 50;
@@ -145,6 +150,13 @@ class BitcoinInsight_Api extends TooBasic_Controller
 		$b->poolInfo = [];
 
 		print json_encode($b);
+	}
+
+	protected function _getBlock($hash)
+	{
+		return $this->_getCached('block:'. $hash, function() use ($hash){
+			return $this->_bt->getblock($hash);
+		});
 	}
 
 	public function getTxs()
@@ -232,6 +244,14 @@ class BitcoinInsight_Api extends TooBasic_Controller
 			http_response_code(500);
 
 		print json_encode(['error' => $e->getMessage()]);
+	}
+
+	protected function _getCached($key, callable $cb)
+	{
+		return $this->_mc->get($key, function($m, $k, &$v) use($cb){
+			$v = call_user_func($cb);
+			return true;
+		});
 	}
 }
 
